@@ -1,0 +1,308 @@
+var fileinput_cr1 = document.getElementById('file_id');
+var fileinput_cr2 = document.getElementById('file_license');
+var fileinput_cr3 = document.getElementById('file_car_front_pic');
+var fileinput_cr4 = document.getElementById('file_car_back_pic');
+var fileinput_cr6 = document.getElementById('health_certificate');
+var fileinput_cr7 = document.getElementById('car_registration');
+
+var form = document.getElementById('form');
+ 
+function processfile(fileinput, file, max_width, max_height, preview, elem_id) {
+  return new Promise(function(resolve, reject){
+    if( !( /image/i ).test( file.type ) )
+    {
+      //alert( "File "+ file.name +" is not an image." );
+      showError( "ØªØ£ÙƒØ¯ Ù…Ù† Ù„Ø§Ø­Ù‚Ø© Ù…Ù„Ù Ø§Ù„ØµÙˆØ±ØŒ Ù„Ø§Ø¨Ø¯ Ø£Ù† ØªÙƒÙˆÙ† PNG Ø£Ùˆ JPG", 'register_error_signup');
+      reject('Invalid File Type'+elem_id);
+      
+      $('html, body').animate({
+        scrollTop: $('#endOfPage').offset().top
+      }, 1000);
+
+      return false;
+    }
+
+    //Get Image Orientation using exif library
+    var orientation = 0;
+    EXIF.getData(file,function() {
+      orientation = EXIF.getTag(this,"Orientation");
+    });
+
+    // read the files
+    var reader = new FileReader();
+    reader.readAsArrayBuffer(file);
+
+    reader.onerror = () => {
+      reader.abort();
+      showError( "Problem parsing input file.", 'register_error_signup');
+
+      reject('Problem parsing input file.'+elem_id);
+
+      $('html, body').animate({
+        scrollTop: $('#endOfPage').offset().top
+      }, 1000);
+
+      return false;
+    };
+    
+    reader.onload = function (event) {
+      // blob stuff
+      var blob = new Blob([event.target.result]); // create blob...
+      window.URL = window.URL || window.webkitURL;
+      var blobURL = window.URL.createObjectURL(blob); // and get it's URL
+      
+      // helper Image object
+      var image = new Image();
+      image.src = blobURL;
+      
+      image.onerror = () => {
+        image.abort();
+        showError( "Problem creating image html element.", 'register_error_signup');
+
+        reject('Problem creating image html element.'+elem_id);
+
+        $('html, body').animate({
+          scrollTop: $('#endOfPage').offset().top
+        }, 1000);
+
+        return false;
+      };
+
+      image.onload = function() {
+        // have to wait till it's loaded
+
+        var resized = resizeMe(fileinput, image , max_width, max_height, preview, elem_id, orientation); // send it to canvas
+        var newinput = document.createElement("input");
+        newinput.type = 'hidden';
+        newinput.name = 'images_'+elem_id;
+        newinput.id = 'myimages_'+elem_id;
+        newinput.value = resized; // put result from canvas into new hidden input
+        form.appendChild(newinput);
+        resolve(elem_id);
+      }
+    };
+  });
+}
+
+function readfiles(fileinput, max_width, max_height, preview, elem_id) {
+  // remove the existing hidden inputs if user re-selects new pics
+  var files = fileinput.files;
+  var existinginputs = document.getElementsByName('images_'+elem_id);
+
+  // it's a live list so removing the first element each time
+  while (existinginputs.length > 0) {
+    form.removeChild(existinginputs[0]);
+  } 
+  
+  // process each file at once
+  for (var i = 0; i < files.length; i++) {
+    promises.push(processfile(fileinput, files[i], max_width, max_height, preview, elem_id));
+  }
+
+  //remove the original files from fileinput
+  // fileinput.value = "";
+}
+
+// === RESIZE ====
+
+function resizeMe(fileinput, img, max_width, max_height, preview, elem_id, orientation) {
+  
+  var canvas = document.createElement('canvas');
+
+  var width = img.width;
+  var height = img.height;
+
+  // calculate the width and height, constraining the proportions
+  if (width > height) {
+    if (width > max_width) {
+      //height *= max_width / width;
+      height = Math.round(height *= max_width / width);
+      width = max_width;
+    }
+  } else {
+    if (height > max_height) {
+      //width *= max_height / height;
+      width = Math.round(width *= max_height / height);
+      height = max_height;
+    }
+  }
+
+  // resize the canvas and draw the image data into it
+  canvas.id = "canvas_"+elem_id;
+  canvas.width = width;
+  canvas.height = height;
+  var ctx = canvas.getContext("2d");
+  
+  //Fix Orientation
+  switch(orientation){
+    case 2:
+      // horizontal flip
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      break;
+    case 3:
+      // 180Â° rotate left
+      ctx.translate(canvas.width, canvas.height);
+      ctx.rotate(Math.PI);
+      break;
+    case 4:
+      // vertical flip
+      ctx.translate(0, canvas.height);
+      ctx.scale(1, -1);
+      break;
+    case 5:
+      // vertical flip + 90 rotate right
+      ctx.rotate(0.5 * Math.PI);
+      ctx.scale(1, -1);
+      break;
+    case 6:
+      // 90Â° rotate right
+      canvas.width = height;
+      canvas.height = width;
+      ctx.rotate(0.5 * Math.PI);
+      ctx.translate(0, -canvas.width);
+      break;
+    case 7:
+      // horizontal flip + 90 rotate right
+      ctx.rotate(0.5 * Math.PI);
+      ctx.translate(canvas.width, -canvas.height);
+      ctx.scale(-1, 1);
+      break;
+    case 8:
+      // 90Â° rotate left
+      ctx.rotate(-0.5 * Math.PI);
+      ctx.translate(-canvas.width, 0);
+      break;
+  }
+
+  ctx.drawImage(img, 0, 0, width, height);
+  
+  if (elem_id == 'cr5'){
+    canvas.style.width = "150px";
+    canvas.style.height = "150px";
+  }
+
+  // get the data from canvas as 70% JPG (can be also PNG, etc.)
+  return canvas.toDataURL("image/jpeg",0.7);
+}
+
+//Fade In the selected image in the preview
+function fadeIn(el, display){
+  el.style.opacity = 0;
+  el.style.display = display || "block";
+
+  (function fade() {
+    var val = parseFloat(el.style.opacity);
+    if (!((val += .1) > 1)) {
+      el.style.opacity = val;
+      requestAnimationFrame(fade);
+    }
+  })();
+}
+
+//Read the file and display the selected image to the user
+function readURL(input, elem_id) {
+  if (input.files && input.files[0]) {
+    var reader = new FileReader();
+
+    reader.onload = function (e) {      
+      var default_elem = document.getElementById('default_'+elem_id);
+      default_elem.style.display = 'none';
+      default_elem.innerHTML = '';
+
+      var image = new Image();
+      image.src = e.target.result;
+      image.width = '150';
+      image.height = '150';
+      default_elem.appendChild(image);
+      fadeIn(default_elem);
+      input.style.color = "transparent";
+    };
+
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+function processAllFiles(){
+  var preview_cr1 = document.getElementById('preview_cr1');
+  readfiles(fileinput_cr1, fileinput_cr1.attributes['data-maxwidth'].value, fileinput_cr1.attributes['data-maxheight'].value, preview_cr1 , 'cr1');
+
+  var preview_cr2 = document.getElementById('preview_cr2');
+  readfiles(fileinput_cr2, fileinput_cr2.attributes['data-maxwidth'].value, fileinput_cr2.attributes['data-maxheight'].value, preview_cr2 , 'cr2');
+
+  var preview_cr3 = document.getElementById('preview_cr3');
+  readfiles(fileinput_cr3, fileinput_cr3.attributes['data-maxwidth'].value, fileinput_cr3.attributes['data-maxheight'].value, preview_cr3 , 'cr3');
+
+  var preview_cr4 = document.getElementById('preview_cr4');
+  readfiles(fileinput_cr4, fileinput_cr4.attributes['data-maxwidth'].value, fileinput_cr4.attributes['data-maxheight'].value, preview_cr4 , 'cr4');
+
+  var preview_cr6 = document.getElementById('preview_cr6');
+  readfiles(fileinput_cr6, fileinput_cr6.attributes['data-maxwidth'].value, fileinput_cr6.attributes['data-maxheight'].value, preview_cr6 , 'cr6');
+
+  var preview_cr7 = document.getElementById('preview_cr7');
+  readfiles(fileinput_cr7, fileinput_cr7.attributes['data-maxwidth'].value, fileinput_cr7.attributes['data-maxheight'].value, preview_cr7 , 'cr7');
+}
+
+function processDocumentFiles(){
+  var preview_cr6 = document.getElementById('preview_cr6');
+  readfiles(fileinput_cr6, fileinput_cr6.attributes['data-maxwidth'].value, fileinput_cr6.attributes['data-maxheight'].value, preview_cr6 , 'cr6');
+
+  var preview_cr7 = document.getElementById('preview_cr7');
+  readfiles(fileinput_cr7, fileinput_cr7.attributes['data-maxwidth'].value, fileinput_cr7.attributes['data-maxheight'].value, preview_cr7 , 'cr7');
+}
+
+
+// this is where it starts. event triggered when user selects files
+fileinput_cr1.onchange = function(){
+  if ( !( window.File && window.FileReader && window.FileList && window.Blob ) ) {
+    alert('The File APIs are not fully supported in this browser.');
+    return false;
+  }
+  readURL(this, 'cr1');
+}
+
+// this is where it starts. event triggered when user selects files
+fileinput_cr2.onchange = function(){
+  if ( !( window.File && window.FileReader && window.FileList && window.Blob ) ) {
+    alert('The File APIs are not fully supported in this browser.');
+    return false;
+  }
+  readURL(this, 'cr2');
+}
+
+// this is where it starts. event triggered when user selects files
+fileinput_cr3.onchange = function(){
+  if ( !( window.File && window.FileReader && window.FileList && window.Blob ) ) {
+    alert('The File APIs are not fully supported in this browser.');
+    return false;
+  }
+  readURL(this, 'cr3');
+}
+
+// this is where it starts. event triggered when user selects files
+fileinput_cr4.onchange = function(){
+  if ( !( window.File && window.FileReader && window.FileList && window.Blob ) ) {
+    alert('The File APIs are not fully supported in this browser.');
+    return false;
+  }
+  readURL(this, 'cr4');
+}
+
+// this is where it starts. event triggered when user selects files
+fileinput_cr6.onchange = function(){
+  if ( !( window.File && window.FileReader && window.FileList && window.Blob ) ) {
+    alert('The File APIs are not fully supported in this browser.');
+    return false;
+  }
+  readURL(this, 'cr6');
+}
+
+// this is where it starts. event triggered when user selects files
+fileinput_cr7.onchange = function(){
+  if ( !( window.File && window.FileReader && window.FileList && window.Blob ) ) {
+    alert('The File APIs are not fully supported in this browser.');
+    return false;
+  }
+  readURL(this, 'cr7');
+}
+;
